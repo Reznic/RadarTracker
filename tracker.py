@@ -65,6 +65,10 @@ class ExtendedKalmanTrack_3D:
         # Doppler buffer
         self.doppler_history = deque(maxlen=20)
         self.doppler_history.append(detection['doppler'])
+        self.az_history = deque(maxlen=6)
+        az = get_az_from_det(detection)
+        self.az_history.append(az)
+        self.median_az = az
 
         # car assoc is detection with doppler above 10m/s
         if np.abs(detection['doppler']) > self.dopp_thr4class_car:
@@ -181,6 +185,11 @@ class ExtendedKalmanTrack_3D:
         }
         self.last_doppler = detection['doppler']
         self.doppler_history.append(detection['doppler'])
+
+        az = get_az_from_det(detection)
+        self.az_history.append(az)
+        self.median_az = self.get_median_az()
+
         if all(self.dopp_thr4class_human > num for num in self.doppler_history):
             self.count_pass_dopp4human = 0
         self.last_doppler = detection['doppler']
@@ -261,6 +270,15 @@ class ExtendedKalmanTrack_3D:
         if not self.doppler_history:
             return 0.0
         return sum(self.doppler_history) / len(self.doppler_history)
+
+    def get_median_az(self):
+        np.nanmedian(self.az_history)
+
+def get_az_from_det(det):
+    az = math.degrees(math.atan2(det['y'], det['x']))
+    az = max(-35, az)
+    az = min(35, az)
+    return az
 
 # ---------------------- Tracker Manager 3D----------------------
 
