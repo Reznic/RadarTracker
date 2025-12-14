@@ -20,6 +20,8 @@ if record_results:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     exp_folder_name = timestamp
     path2records_folder = Path(f"records_human_detection/{exp_folder_name}")
+    # path2records_folder = Path(f"records_radom_calib/{exp_folder_name}")
+
 
     os.makedirs(path2records_folder, exist_ok=True)
     os.path.join(path2records_folder,"det.csv")
@@ -56,7 +58,17 @@ if record_results:
 # CFG_FILE =  Path("./profile_2025_05_08T07_14_46_480.cfg")
 # CFG_FILE =  Path("./profile_2025_05_08T07_14_46_480_20fps.cfg")
 # CFG_FILE =  Path("./profile_2025_05_08T07_14_46_480_20fps_diff_freq.cfg")
-CFG_FILE =  Path("./profile_humans.cfg")
+# CFG_FILE =  Path("./profile_humans.cfg")
+# CFG_FILE =  Path("./profile_humans_200_chirps.cfg")
+# CFG_FILE =  Path("./profile_humans_200_chirps_dopp_cfar_win.cfg")
+# CFG_FILE =  Path("./profile_humans_200_chirps_dopp_cfar_win_5.5_dopp_cfar.cfg")
+# CFG_FILE =  Path("./profile_humans_200_chirps_dopp_cfar_win_30fps.cfg")
+# CFG_FILE =  Path("./profile_humans_200_chirps_dopp_cfar_win_max_range_62.cfg")
+CFG_FILE =  Path("./profile_humans_200_chirps_dopp_cfar_win_half_samp_rate_and_slop.cfg")
+# CFG_FILE =  Path("./profile_humans_tests.cfg")
+# CFG_FILE =  Path("./profile_humans_1tx_1rx.cfg")
+
+# CFG_FILE =  Path("./profile_humans(itay).cfg")
 # CFG_FILE =  Path("./profile_humans_for_tests.cfg")
 
 
@@ -83,17 +95,20 @@ if os.name == 'nt':
 else:
     # CONFIG_PORT = "/dev/ttyACM0"
     # DATA_PORT = "/dev/ttyACM1"
-    # CONFIG_PORT = "/dev/ttyUSB0"
-    # DATA_PORT = "/dev/ttyUSB1"
+    CONFIG_PORT = "/dev/ttyUSB0"
+    DATA_PORT = "/dev/ttyUSB1"
     # CONFIG_PORT = "/dev/serial/by-id/usb-Silicon_Labs_CP2105_Dual_USB_to_UART_Bridge_Controller_016A58E4-if00-port0"
     # DATA_PORT = "/dev/serial/by-id/usb-Silicon_Labs_CP2105_Dual_USB_to_UART_Bridge_Controller_016A58E4-if01-port0"
+    #right radar
     CONFIG_PORT_rdr0 =  "/dev/serial/by-id/usb-Silicon_Labs_CP2105_Dual_USB_to_UART_Bridge_Controller_016A5BCC-if00-port0"
     DATA_PORT_rdr0 =    "/dev/serial/by-id/usb-Silicon_Labs_CP2105_Dual_USB_to_UART_Bridge_Controller_016A5BCC-if01-port0"
-    CONFIG_PORT_rdr1 =  "/dev/serial/by-id/usb-Silicon_Labs_CP2105_Dual_USB_to_UART_Bridge_Controller_016A58E4-if00-port0"
-    DATA_PORT_rdr1 =    "/dev/serial/by-id/usb-Silicon_Labs_CP2105_Dual_USB_to_UART_Bridge_Controller_016A58E4-if01-port0"
-    CONFIG_PORTs = [CONFIG_PORT_rdr0, CONFIG_PORT_rdr1]
-    DATA_PORTs = [DATA_PORT_rdr0, DATA_PORT_rdr1]
-    
+    # left radar
+    CONFIG_PORT_rdr1 =  "/dev/serial/by-id/usb-Silicon_Labs_CP2105_Dual_USB_to_UART_Bridge_Controller_016C2377-if00-port0"
+    DATA_PORT_rdr1 =    "/dev/serial/by-id/usb-Silicon_Labs_CP2105_Dual_USB_to_UART_Bridge_Controller_016C2377-if01-port0"
+    # CONFIG_PORTs = [CONFIG_PORT_rdr0, CONFIG_PORT_rdr1]
+    # DATA_PORTs = [DATA_PORT_rdr0, DATA_PORT_rdr1]
+    CONFIG_PORTs = [CONFIG_PORT]
+    DATA_PORTs = [DATA_PORT]
 BAUDRATE_CONFIG = 115200
 BAUDRATE_DATA = 921600
 MAGIC_WORD = b'\x02\x01\x04\x03\x06\x05\x08\x07'
@@ -140,6 +155,10 @@ def send_config(config_file, ser_config):
                     line = ' '.join(line_parts)
 
                 ser_config[i_rdr].write((line.strip() + '\n').encode())
+                #ser_config[i_rdr].flush()
+                #resp = ser_config[i_rdr].read(1000)
+                #print(resp)
+
             if line.startswith('frameCfg'):
                 frame_period = float(line.split()[5])
             time.sleep(0.01)
@@ -152,7 +171,8 @@ def connect_serial():
         try:
             ser_config.append(serial.Serial(CONFIG_PORTs[i_rdr], BAUDRATE_CONFIG, timeout=0.5))
             ser_data.append(serial.Serial(DATA_PORTs[i_rdr], BAUDRATE_DATA, timeout=0.5))
-        except:
+        except serial.serial.SerialException as e:
+            print(e)
             pass
     return ser_config, ser_data
 
@@ -361,7 +381,7 @@ def main_3D():
     save_freqs_to_file(freqs, filename=os.path.join(path2records_folder, "freqs.txt"))
 
     start_radar(ser_config)
-
+    # frame_period = 0.050
     print("Reading frames...")
     if not record_only_mode:
         plt.ion()
