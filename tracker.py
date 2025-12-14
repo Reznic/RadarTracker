@@ -259,7 +259,7 @@ class ExtendedKalmanTrack_3D:
     def is_human_track(self, thr_num_assoc4class_human):
         is_human = False
         if self.target_class == 'n':
-            if self.assoc_dets > 15:
+            if self.assoc_dets > 10:
                 is_human = self.count_pass_dopp4human < thr_num_assoc4class_human
         else:
             if self.target_class == 'h':
@@ -276,8 +276,8 @@ class ExtendedKalmanTrack_3D:
 
 def get_az_from_det(det):
     az = math.degrees(math.atan2(det['y'], det['x'])) - 90
-    az = max(-35, az)
-    az = min(35, az)
+    # az = max(-35, az)
+    # az = min(35, az)
     return az
 
 # ---------------------- Tracker Manager 3D----------------------
