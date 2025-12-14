@@ -9,7 +9,7 @@ from plot_scripts.plot_range_vs_time_from_csv import plot_range_vs_time_from_csv
 from plot_scripts.get_records import get_latest_entry
 from datetime import datetime, timedelta
 from pathlib import Path
-from find_closest_image import find_closest_image
+# from find_closest_image import find_closest_image
 import re
 
 fps = 10
@@ -189,7 +189,7 @@ def run_tracker_3D_on_csv(csv_path, frame_period = 0.1, dist_threshold=1, min_tr
     tracker_writer = None
     tracker_rec_cols = ['track_id', 'timestamp', 'Radar id', 'time_from_start','num assoc',
                                  'range', 'doppler', 'x', 'y', 'z','vx','vy','vz','calc_dopp','is assoc',
-                                 'assoc_timestamp', 'assoc_x', 'assoc_y', 'assoc_z','assoc_dopp','z var','class']
+                                 'assoc_timestamp', 'assoc_x', 'assoc_y', 'assoc_z','assoc_dopp','z var','class','median_az']
     if os.path.isdir(csv_path):
         tracker_csv_path = os.path.join(Path(csv_path),"trks.csv")
         filename = csv_path.name
@@ -332,6 +332,8 @@ def run_tracker_3D_on_csv(csv_path, frame_period = 0.1, dist_threshold=1, min_tr
         for i_rdr in range(num_rdrs):
             det_per_rdr = [det for det in detections if det.get('radar_id') == i_rdr]
             tracks = tracker.update(det_per_rdr,i_rdr ,timestamp, debug_mode=debug_mode)
+            all_trks = [trk for rdr in tracks for trk in rdr if trk.target_class != 'n']
+            pass
 
         for i_rdr in range(num_rdrs):
             trks_df = trks(tracks[i_rdr])
@@ -400,7 +402,8 @@ def run_tracker_3D_on_csv(csv_path, frame_period = 0.1, dist_threshold=1, min_tr
                         round(assoc_z, 1) if assoc_z != '' else '',
                         round(assoc_dopp, 1) if assoc_dopp != '' else '',
                         round(t.get_z_variance(),2),
-                        dict_class[t_class]
+                        dict_class[t_class],
+                        round(t.median_az,1)
                     ])
     if tracker_writer:
         tracker_file.close()
@@ -1004,10 +1007,43 @@ def run_tracker_3D_on_csv(csv_path, frame_period = 0.1, dist_threshold=1, min_tr
 # path2dets = Path(r"../records_human_detection/20250928_131952")  # Duration: 01:27 | FPS: 20.00 | dets: 672
 # path2dets = Path(r"../records_human_detection/20250928_132621")  # Duration: 01:22 | FPS: 20.00 | dets: 520
 # path2dets = Path(r"../records_human_detection/20250928_133721")  # Duration: 01:25 | FPS: 20.00 | dets: 763
-# path2dets = Path(r"../records_human_detection/20250928_134224")  # Duration: 00:21 | FPS: 20.00 | dets: 121
+# path2dets = Path(r"../records_human_detection/20251105_165014")  # Duration: 00:21 | FPS: 20.00 | dets: 121
+
+# fusion multiple radars
+# path2dets = Path(r"../records_human_detection/20251116_161401")  # Duration: 00:58 | FPS: 20.00 | dets: 1069
+# path2dets = Path(r"../records_human_detection/20251116_161652")  # Duration: 00:59 | FPS: 20.00 | dets: 1020
+# path2dets = Path(r"../records_human_detection/20251116_162019")  # Duration: 00:45 | FPS: 20.00 | dets: 2679
+# path2dets = Path(r"../records_human_detection/20251116_162308")  # Duration: 00:25 | FPS: 20.00 | dets: 384
+# path2dets = Path(r"../records_human_detection/20251116_162513")  # Duration: 00:11 | FPS: 20.00 | dets: 72
+
+
+# path2dets = Path(r"../records_human_detection/20251125_183758")  # profile human cfg
+# path2dets = Path(r"../records_human_detection/20251125_184445")  # 200 chirps cfg
+
+# path2dets = Path(r"../records_human_detection/20251126_110241")  # profile human cfg
+# path2dets = Path(r"../records_human_detection/20251126_110535")  # 200 chirps cfg 10 dopp win
+
+# 240 chirps 48 rx gain
+# path2dets = Path(r"../records_human_detection/20251127_120052")  # Duration: 02:17 | FPS: 20.00 | dets: 2417  walkin open field
+# path2dets = Path(r"../records_human_detection/20251127_125251")  # Duration: 01:31 | FPS: 20.00 | dets: 1650 running open field
+
+# path2dets = Path(r"../records_radom_calib/20251204_193127")  # Duration: 00:07 | FPS: 20.00 | dets: 9
+# path2dets = Path(r"../records_radom_calib/20251204_193203")  # Duration: 00:51 | FPS: 20.00 | dets: 1595
+# path2dets = Path(r"../records_radom_calib/20251204_193452_no_radom")  # Duration: 00:38 | FPS: 20.00 | dets: 1219
+# path2dets = Path(r"../records_radom_calib/20251204_193857_radom_1.5mm")  # Duration: 00:43 | FPS: 20.00 | dets: 978
+# path2dets = Path(r"../records_radom_calib/20251204_194500_radom_2mm")  # Duration: 00:28 | FPS: 20.00 | dets: 808
+# path2dets = Path(r"../records_radom_calib/20251204_195018_radom_1.5mm")  # Duration: 00:48 | FPS: 20.00 | dets: 975
+# path2dets = Path(r"../records_radom_calib/20251204_195508_radom_3mm")  # Duration: 00:29 | FPS: 20.00 | dets: 1698
+# path2dets = Path(r"../records_radom_calib/20251204_200500_radom_5mm")  # Duration: 00:33 | FPS: 20.00 | dets: 2539
+# path2dets = Path(r"../records_radom_calib/20251204_200840_radom_5mm")  # Duration: 00:44 | FPS: 20.00 | dets: 2820
+# path2dets = Path(r"../records_radom_calib/20251204_201630_radom_4.5mm")  # Duration: 00:41 | FPS: 20.00 | dets: 2751
+# path2dets = Path(r"../records_radom_calib/20251204_201847_radom_4mm")  # Duration: 00:45 | FPS: 20.00 | dets: 2718
+# path2dets = Path(r"../records_radom_calib/20251204_202133_radom_3.5mm")  # Duration: 00:43 | FPS: 20.00 | dets: 2306
 
 if "path2dets" not in globals():
     path2dets = get_latest_entry(Path(r"../records_human_detection"))
+    # path2dets = get_latest_entry(Path(r"../records_radom_calib"))
+
 
 output_tracks_path = Path("playback_tracks/tracks_log_01.csv")
 run_tracker_3D_on_csv(path2dets,frame_period=frame_period, dist_threshold = 3,min_track_length=2 ,tracker_csv_path=output_tracks_path)
