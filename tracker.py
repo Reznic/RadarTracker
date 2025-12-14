@@ -10,7 +10,7 @@ import math
 # ---------------------- Extended Kalman Track 3D ----------------------
 
 class ExtendedKalmanTrack_3D:
-    def __init__(self, detection, track_id):
+    def __init__(self, detection, track_id, passed_min_range_threshold):
         self.id = track_id
         self.rdr_id = detection['radar_id']
         self.missed = 0
@@ -18,8 +18,12 @@ class ExtendedKalmanTrack_3D:
         self.time_no_assoc = 0
         self.birth_time = detection['timestamp']
         self.age = 0
+        self.integrated_distant = 0
         self.last_doppler = detection['doppler']
+        self.first_range = detection['range']
         self.last_range = detection['range']
+        self.track_distance = 0
+        self.last_kalman_range = detection['range']
         self.assoc_dets = 1
 
         self.kf = ExtendedKalmanFilter(dim_x=6, dim_z=3)
@@ -69,6 +73,8 @@ class ExtendedKalmanTrack_3D:
         az = get_az_from_det(detection)
         self.az_history.append(az)
         self.median_az = az
+        # yair params
+        self.passed_min_range_threshold = passed_min_range_threshold
 
         # car assoc is detection with doppler above 10m/s
         if np.abs(detection['doppler']) > self.dopp_thr4class_car:
@@ -194,6 +200,10 @@ class ExtendedKalmanTrack_3D:
             self.count_pass_dopp4human = 0
         self.last_doppler = detection['doppler']
         self.last_range = detection['range']
+        self.last_kalman_range = self.get_filtered_range()
+        self.track_distance = self.first_range - self.last_range#self.last_kalman_range
+        self.integrated_distant += (self.last_assoc_timestamp - detection['timestamp'])*self.get_filtered_doppler()
+        # print('=== id=', self.id, '  integrated_dist = ', self.integrated_distant, ' track_dist = ', self.track_distance)
         self.last_assoc_timestamp = detection['timestamp']
         self.assoc_dets += 1
         self.was_associated = True
@@ -225,9 +235,9 @@ class ExtendedKalmanTrack_3D:
             return 0.0
         return self.z_M2 / (self.z_count - 1)
 
-    def classify_tgt(self, thr_num_assoc4class_human = 10):
+    def classify_tgt(self, thr_num_assoc4class_human, n_min_assoc_dets):
         if self.target_class == 'n':
-            if self.is_human_track(thr_num_assoc4class_human):
+            if self.is_human_track(thr_num_assoc4class_human, n_min_assoc_dets):
                 self.target_class = 'h' # human track
             else:
                 self.target_class = 'n'
@@ -256,10 +266,12 @@ class ExtendedKalmanTrack_3D:
                 is_car = True
         return is_car
 
-    def is_human_track(self, thr_num_assoc4class_human):
+    def is_human_track(self, thr_num_assoc4class_human,n_min_assoc_dets):
         is_human = False
         if self.target_class == 'n':
-            if self.assoc_dets > 10:
+            passed_min_range = self.first_range - self.last_range > self.passed_min_range_threshold
+            # print('ID=', self.id ,'  birth_time' ,round(self.birth_time, 2), '  first_range = ', self.first_range  ,'   last_range = ' , self.last_range)
+            if self.assoc_dets > n_min_assoc_dets and passed_min_range:
                 is_human = self.count_pass_dopp4human < thr_num_assoc4class_human
         else:
             if self.target_class == 'h':
@@ -283,7 +295,18 @@ def get_az_from_det(det):
 # ---------------------- Tracker Manager 3D----------------------
 
 class TrackerManager_3D:
-    def __init__(self, num_rdrs=1 , dist_threshold=3,dopp_dist_threshold = 2, max_missed=20, max_range=80.0, max_speed=10.0):
+    def __init__(self, num_rdrs=1,
+                 dist_threshold=1.6,
+                 dopp_dist_threshold = 1.2,
+                 max_missed=37,
+                 max_range=80.0,
+                 max_speed=10.0,
+                 n_min_assoc_dets4human = 10,
+                 max_no_assoc_time = 3,
+                 manuaver_dopp_thr = 3,
+                 passed_min_range_threshold = 3.5,
+                 max_time_static = 7,
+                 max_integrated_dist_diff = 1.3):
         self.tracks: list[list[ExtendedKalmanTrack_3D]] = [[] for _ in range(num_rdrs)] # blank list for each radar
         self.next_id = 0
         self.dist_threshold = dist_threshold
@@ -302,6 +325,14 @@ class TrackerManager_3D:
         self.ignore_near_duplicates = False
         self.last_timestamp: list[float] = [float() for _ in range(num_rdrs)]
         self.thr_num_assoc4class_human = 10
+        self.n_min_assoc_dets4human = n_min_assoc_dets4human
+        self.max_no_assoc_time = max_no_assoc_time
+        self.manuaver_dopp_thr = manuaver_dopp_thr
+
+        # Yair params
+        self.passed_min_range_threshold = passed_min_range_threshold  # 3 #[m]
+        self.max_time_static = max_time_static  # [s]
+        self.max_integrated_dist_diff = max_integrated_dist_diff  # [m]
 
 
     def _debug_capture_frame(self, detections, timestamp=None):
@@ -319,7 +350,7 @@ class TrackerManager_3D:
         ]
     def classify_tgts(self, i_rdr):
         for t in self.tracks[i_rdr]:
-            t.classify_tgt(thr_num_assoc4class_human = self.thr_num_assoc4class_human)
+            t.classify_tgt(thr_num_assoc4class_human = self.thr_num_assoc4class_human, n_min_assoc_dets = self.n_min_assoc_dets4human)
 
 
     def debug_all(self, i_rdr):
@@ -481,7 +512,6 @@ class TrackerManager_3D:
                 #     continue
 
                 dt = current_time-self.last_timestamp[i_rdr]
-                manuaver_dopp_thr = 3
                 # if self.tracks[i_rdr][i].assoc_dets > 10:
                 #     manuaver_dopp_thr = 7
                 range_innov = rng - self.tracks[i_rdr][i].range_val
@@ -490,7 +520,7 @@ class TrackerManager_3D:
 
                 if (abs(range_innov) < dist_thr and
                     dopp_dist < self.dopp_dist_threshold and
-                    abs(range_innov - predicted_range_innov) < manuaver_dopp_thr):
+                    abs(range_innov - predicted_range_innov) < self.manuaver_dopp_thr):
 
                     self.tracks[i_rdr][i].update(det)
                     matched_tracks.add(i)
@@ -544,7 +574,7 @@ class TrackerManager_3D:
                     close2trk = True
             if close2trk:
                 continue
-            self.tracks[i_rdr].append(ExtendedKalmanTrack_3D(det, self.next_id))
+            self.tracks[i_rdr].append(ExtendedKalmanTrack_3D(det, self.next_id, self.passed_min_range_threshold))
 
             self.next_id += 1
             used_range_doppler.add(rd_key)
@@ -570,12 +600,20 @@ class TrackerManager_3D:
             # speed = np.sqrt(vx ** 2 + vy ** 2 + vz ** 2)
             if t.missed > self.max_missed:
                 continue
-            if t.time_no_assoc > 2:
+            if t.time_no_assoc > self.max_no_assoc_time:
                 continue
             if range_val > self.max_range:
                 continue
             if y < -10:
                 continue
+            integrated_dist_cond = abs(t.integrated_distant - t.track_distance) > self.max_integrated_dist_diff
+            if integrated_dist_cond and t.integrated_distant < self.passed_min_range_threshold:
+                continue
+
+            is_static = t.first_range - t.last_range < self.passed_min_range_threshold
+            if t.age > self.max_time_static and is_static:
+                continue
+
             # if np.abs(t.get_avg_doppler()) < 0.1:
             #     continue
             doppler = (vx * x + vy * y + vz * z) / range_val
@@ -588,20 +626,20 @@ class TrackerManager_3D:
     def filter_tracks_time_no_assoc(self, i_rdr):
         filtered_tracks = []
         for t in self.tracks[i_rdr]:
-            if t.time_no_assoc > 2:
+            if t.time_no_assoc > self.max_no_assoc_time:
                 continue
             filtered_tracks.append(t)
         return filtered_tracks
 # ---------------------- side functions ----------------------
 
-def classify_tgt4plot(track, thr_num_assoc4class_car = 4, thr_num_assoc4class_human = 1):
+def classify_tgt4plot(track, thr_num_assoc4class_car = 4, thr_num_assoc4class_human = 1,n_min_assoc_dets4human=10):
     if track.target_class == 't':
         t_class = 't'
         return t_class
     t_class = 'n'  # none
     if track.is_car_track(thr_num_assoc4class_car):
         t_class = 'c'
-    if track.is_human_track(thr_num_assoc4class_human):
+    if track.is_human_track(thr_num_assoc4class_human, n_min_assoc_dets4human):
         t_class = 'h'
     return t_class
 
