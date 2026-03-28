@@ -129,8 +129,9 @@ thr_num_assoc4class_car = 4
 
 dist_from_road = 15 # meters
 # ---------------------- Serial Setup ----------------------
-def send_config(config_file, ser_config):
+def send_config(config_file, ser_config, timeout=1):
     freqs = []
+    steer_angles = []
     frame_period = None
     with open(config_file, 'r') as f:
         lines = f.readlines()
@@ -159,10 +160,77 @@ def send_config(config_file, ser_config):
                 #resp = ser_config[i_rdr].read(1000)
                 #print(resp)
 
+            response = ""
+            start_time = time.time()
+
+            # Loop until we see the command prompt return, or we hit the timeout
+            while (time.time() - start_time) < timeout:
+                if ser_config[i_rdr].in_waiting > 0:
+                    # Read available bytes and decode
+                    chunk = ser_config[i_rdr].read(ser_config[i_rdr].in_waiting).decode('utf-8', errors='ignore')
+                    response += chunk
+
+                    # The TI Out of Box demo typically ends its response with "mmwDemo:/>" or "Done"
+                    if "mmwDemo:/>" in response or "Done" in response:
+                        # print(line)
+                        # print(response)
+                        break
+                else:
+                    # Brief sleep to prevent maxing out the CPU
+                    time.sleep(0.01)
+            if "error" in response.lower():
+                print("\n" + "=" * 40)
+                print("🚨 CONFIGURATION ERROR DETECTED 🚨")
+                print(f"Failed Command : {line}")
+                print(f"Radar Response : {response.strip()}")
+                print("=" * 40 + "\n")
+
             if line.startswith('frameCfg'):
                 frame_period = float(line.split()[5])
-            time.sleep(0.01)
-    return frame_period/1000, freqs
+            elif line.startswith('subFrameCfg'):
+                frame_period = float(line.split()[5])
+
+            if line.startswith('profileCfg'):
+                tx_phase_shifter = int(line.split()[7])
+                steer_angles.append(decode_steering_angle(tx_phase_shifter))
+                # print(steer_angle)
+    return frame_period/1000, freqs, steer_angles
+
+def decode_steering_angle(tx_phase_shifter):
+    """
+    Decodes the txPhaseShifter 32-bit integer from a TI mmWave profileCfg
+    into the physical steering angle in degrees.
+    """
+    # 1. Extract the 6-bit phase codes for each TX antenna
+    # Mask is 0x3F (63 in decimal) to isolate 6 bits
+    tx0_code = (tx_phase_shifter >> 2) & 0x3F
+    tx1_code = (tx_phase_shifter >> 10) & 0x3F
+    tx2_code = (tx_phase_shifter >> 18) & 0x3F
+
+    # 2. Convert codes to phase in degrees (each step is 5.625 degrees)
+    step_size = 5.625
+    tx0_phase = tx0_code * step_size
+    tx1_phase = tx1_code * step_size
+    tx2_phase = tx2_code * step_size
+
+    # 3. Calculate the phase difference (Delta Phi) between TX1 and TX0
+    delta_phi = tx1_phase - tx0_phase
+
+    # Normalize phase difference to be strictly within -180 to +180 degrees
+    if delta_phi > 180:
+        delta_phi -= 360
+    elif delta_phi < -180:
+        delta_phi += 360
+
+    # 4. Calculate the steering angle
+    # Formula: theta = arcsin(delta_phi / 360)
+    try:
+        steering_angle_rad = math.asin(delta_phi / 360.0)
+        steering_angle_deg = math.degrees(steering_angle_rad)
+    except ValueError:
+        return None, "Invalid phase difference for arcsin"
+
+    return round(steering_angle_deg, 2) #, (tx0_phase, tx1_phase, tx2_phase)
 
 def connect_serial():
     ser_config = []
@@ -245,8 +313,42 @@ def parse_detections(tlv1_payload, tlv7_payload, num_points, frame_num, frame_pe
         })
     return detections
 
+def parse_detections1000(tlv1000_payload, tlv7_payload, num_points, frame_num, frame_period, radar_id, doppler_threshold=0.1 , range_threshold=0.1):
+    detections = []
+    current_time = timestamp_now = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+    for i in range(num_points):
+        try:
+            p_offset = i * 16
+            range_val, az, el, doppler = struct.unpack('<ffff', tlv1000_payload[p_offset:p_offset+16])
+        except:
+            print(f'detection lost')
+            continue
+        s_offset = i * 4
+        # skip snr data if it not exists
+        try:
+            snr, noise = struct.unpack('<HH', tlv7_payload[s_offset:s_offset+4])
+        except:
+            snr = -1
+        if abs(doppler) < doppler_threshold or range_val<range_threshold:
+            continue  # Skip static detections
+
+        detections.append({
+            'curr_timestamp': current_time,
+            'timestamp': frame_period*frame_num,
+            'radar_id': radar_id,
+            'frame_number': frame_num,
+            'x': 0,
+            'y': 0,
+            'z': 0,
+            'range': range_val,
+            'doppler': doppler,
+            'snr': snr,
+            'noise': noise
+        })
+    return detections
+
 # ---------------------- Frame Reader ----------------------
-def read_frame(ser_data, frame_period, i_rdr):
+def read_frame(ser_data, frame_period, i_rdr, num_steer_angles):
     global DATA_BUFFER
     global MAX_DATA_BUFFER
     buffer = ser_data.read(ser_data.in_waiting)
@@ -266,6 +368,7 @@ def read_frame(ser_data, frame_period, i_rdr):
     point_cloud_detections = []
     tlv1_payload = None
     tlv7_payload = None
+    tlv1000_payload = None
 
     for _ in range(header['num_tlvs']):
         if offset + 8 > len(DATA_BUFFER[i_rdr]):
@@ -274,11 +377,13 @@ def read_frame(ser_data, frame_period, i_rdr):
         offset = offset + 8
         tlv_data = DATA_BUFFER[i_rdr][offset : offset + tlv_len]
         offset = offset + tlv_len
-
+        # print(tlv_type)
         if tlv_type == 1:
             tlv1_payload = tlv_data
         elif tlv_type == 7:
             tlv7_payload = tlv_data
+        elif tlv_type == 1000:
+            tlv1000_payload = tlv_data
     DATA_BUFFER[i_rdr] = DATA_BUFFER[i_rdr][offset:]
 
     if tlv1_payload and tlv7_payload:
@@ -286,10 +391,13 @@ def read_frame(ser_data, frame_period, i_rdr):
     if tlv1_payload and not tlv7_payload:
         detections = parse_detections(tlv1_payload, None, header['num_detected_obj'],
                                       header['frame_number'],frame_period)
+    if tlv1000_payload and tlv7_payload:
+        detections = parse_detections1000(tlv1000_payload, tlv7_payload, header['num_detected_obj'],header['frame_number'], frame_period, i_rdr)
     if len(DATA_BUFFER[i_rdr]) > MAX_DATA_BUFFER:
         print('##########buffer_deleted!!!########')
         DATA_BUFFER[i_rdr] = b''
-    return detections , header['frame_number']
+    sub_frame_counter = (header['frame_number']-1)*num_steer_angles + header['sub_frame_number'] + 1
+    return detections , sub_frame_counter
 
 # ---------------------- plot tracks ----------------------
 
@@ -377,7 +485,8 @@ def main_3D():
     stop_radar(ser_config)
     print("Sending config...")
     nub_rdrs = len(ser_config)
-    frame_period, freqs = send_config(CFG_FILE, ser_config)
+    frame_period, freqs, steer_angles = send_config(CFG_FILE, ser_config)
+    num_steer_angles = len(steer_angles)
     save_freqs_to_file(freqs, filename=os.path.join(path2records_folder, "freqs.txt"))
 
     start_radar(ser_config)
@@ -427,7 +536,7 @@ def main_3D():
                     cv2.imwrite(f"{os.path.join(camera_frames_folder_path, timestamp_now)}.jpg", frame)
             ####### end video capture
             for i_rdr in range(len(ser_data)):
-                detections, frame_number = read_frame(ser_data[i_rdr], frame_period, i_rdr)
+                detections, frame_number = read_frame(ser_data[i_rdr], frame_period, i_rdr, num_steer_angles)
                 if detections:
                     tracks = tracker.update(detections, i_rdr, frame_number*frame_period)
                     if not record_only_mode:
