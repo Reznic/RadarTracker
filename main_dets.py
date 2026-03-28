@@ -12,6 +12,8 @@ import sys
 import cv2
 import shutil
 
+print("current dir: ", os.getcwd())
+
 record_results = True
 record_only_mode = True
 
