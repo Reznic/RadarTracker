@@ -66,13 +66,24 @@ if record_results:
 # CFG_FILE =  Path("./profile_humans_200_chirps_dopp_cfar_win_5.5_dopp_cfar.cfg")
 # CFG_FILE =  Path("./profile_humans_200_chirps_dopp_cfar_win_30fps.cfg")
 # CFG_FILE =  Path("./profile_humans_200_chirps_dopp_cfar_win_max_range_62.cfg")
-CFG_FILE =  Path("./profile_humans_200_chirps_dopp_cfar_win_half_samp_rate_and_slop.cfg")
-# CFG_FILE =  Path("./profile_humans_tests.cfg")
+# CFG_FILE =  Path("./profile_humans_200_chirps_dopp_cfar_win_half_samp_rate_and_slop.cfg")
+# CFG_FILE =  Path("./config_for_chambar.cfg")
 # CFG_FILE =  Path("./profile_humans_1tx_1rx.cfg")
 
 # CFG_FILE =  Path("./profile_humans(itay).cfg")
-# CFG_FILE =  Path("./profile_humans_for_tests.cfg")
+# CFG_FILE =  Path("./profile_humans_tests.cfg")
+# CFG_FILE =  Path("./profile_humans_tests_calib.cfg")
+# CFG_FILE =  Path("./profile_humans_tests_42db_gain.cfg")
 
+# best cfg file
+# CFG_FILE =  Path("./profile_humans_tests_42db_gain.cfg")
+#test slope
+# CFG_FILE =  Path("./profile_humans_tests_42db_gain_move_noise.cfg")
+# CFG_FILE =  Path("./profile_humans_tests_42db_gain_move_noise_phased_array.cfg")
+# CFG_FILE =  Path("./profile_humans_tests_42db_gain_move_noise_phased_array (copy).cfg")
+# CFG_FILE =  Path("./profile_humans_tests_42db_gain_move_noise_phased_array_subframes.cfg")
+# CFG_FILE =  Path("./6843_100m_2D_advanced.cfg")
+CFG_FILE =  Path("./pa_steered.cfg") # yossi and eliran
 
 # deploiment mode
 # CFG_FILE =  Path("./deploiment_mode/profile_2025_09_01T06_05_23_904.cfg")
