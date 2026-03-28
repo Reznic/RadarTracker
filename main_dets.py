@@ -596,5 +596,22 @@ def main_3D():
         camera.release()
         cv2.destroyAllWindows()
 
+        # Ask the user for their custom tag
+        user_input = input("Enter a description for this folder: ")
+        # Format the input: replace spaces with underscores and add the leading underscore
+        formatted_name = "_" + user_input.strip().replace(" ", "_")
+        # Define the new path
+        new_folder_name = path2records_folder.with_name(path2records_folder.name + formatted_name)
+        # Rename the folder on your drive
+        try:
+            os.rename(path2records_folder, new_folder_name)
+            print(f"Successfully renamed to: {new_folder_name}")
+        except FileNotFoundError:
+            print("Error: The original folder was not found.")
+        # Create the "rec_name.txt" inside the NEW folder
+        file_path = new_folder_name / "rec_name.txt"
+        file_content = user_input.strip()  # This keeps the spaces but removes the "_"
+        file_path.write_text(file_content)
+
 if __name__ == "__main__":
     main_3D()
