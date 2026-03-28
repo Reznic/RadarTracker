@@ -12,6 +12,9 @@ from pathlib import Path
 # from find_closest_image import find_closest_image
 import re
 
+print("current dir: ", os.getcwd())
+
+
 fps = 10
 frame_period = 1/fps
 RT_xy_plot = False
@@ -51,6 +54,8 @@ def get_fps(folder_path):
     for line in lines:
         if line.strip() and not line.startswith('%'):
             if line.startswith('frameCfg'):
+                frame_period = float(line.split()[5])
+            elif line.startswith('subFrameCfg'):
                 frame_period = float(line.split()[5])
             time.sleep(0.01)
     return 1/(frame_period/1000)
@@ -1039,6 +1044,58 @@ def run_tracker_3D_on_csv(csv_path, frame_period = 0.1, dist_threshold=1, min_tr
 # path2dets = Path(r"../records_radom_calib/20251204_201630_radom_4.5mm")  # Duration: 00:41 | FPS: 20.00 | dets: 2751
 # path2dets = Path(r"../records_radom_calib/20251204_201847_radom_4mm")  # Duration: 00:45 | FPS: 20.00 | dets: 2718
 # path2dets = Path(r"../records_radom_calib/20251204_202133_radom_3.5mm")  # Duration: 00:43 | FPS: 20.00 | dets: 2306
+
+# radome tests
+# no radome - no platform
+# path2dets = Path(r"../records_human_detection/20260205_162907")  # Duration: 01:13 | FPS: 20.00 | dets: 1157
+# no radome - with platform
+# path2dets = Path(r"../records_human_detection/20260205_163528")  # Duration: 00:44 | FPS: 20.00 | dets: 1588
+# with radome with platform
+# path2dets = Path(r"../records_human_detection/20260205_164134")  # Duration: 01:05 | FPS: 20.00 | dets: 1830
+# with radome with platform with calib
+# path2dets = Path(r"../records_human_detection/20260205_174503")  # Duration: 00:57 | FPS: 20.00 | dets: 1359
+# without radome with platform no calib 42db gain
+# path2dets = Path(r"../records_human_detection/20260205_181324")  # Duration: 00:58 | FPS: 20.00 | dets: 1482
+# with radome with platform no calib 42db gain
+# path2dets = Path(r"../records_human_detection/20260205_182004")  # Duration: 00:57 | FPS: 20.00 | dets: 1533
+# with radome with platform no calib 42db gain add 1mm air gap
+# path2dets = Path(r"../records_human_detection/20260205_183926")  # Duration: 00:54 | FPS: 20.00 | dets: 2103
+
+# field test for radome 10/2/2026
+# all platform with radome no calib rx gain 42
+# path2dets = Path(r"../records_human_detection/20260210_152050")  # Duration: 00:47 | FPS: 20.00 | dets: 1310
+# all platform with radome with calib number 1 rx gain 42
+# path2dets = Path(r"../records_human_detection/20260210_152429")  # Duration: 00:47 | FPS: 20.00 | dets: 1323
+# all platform with radome with calib number 1 rx gain 42
+# path2dets = Path(r"../records_human_detection/20260210_154253")  # Duration: 00:59 | FPS: 20.00 | dets: 1423
+# path2dets = Path(r"../records_human_detection/20260210_154841")  # Duration: 01:12 | FPS: 20.00 | dets: 1622
+# all platform with radome with calib number 1 rx gain 40
+# path2dets = Path(r"../records_human_detection/20260210_164256")  # Duration: 00:50 | FPS: 20.00 | dets: 1349
+# all platform with radome with calib number 1 rx gain 38
+# path2dets = Path(r"../records_human_detection/20260210_164639")  # Duration: 00:50 | FPS: 20.00 | dets: 1304
+# all platform with radome with calib number 1 rx gain 40
+# path2dets = Path(r"../records_human_detection/20260210_165523")  # Duration: 01:02 | FPS: 20.00 | dets: 1551
+# all platform with radome with calib number 2 rx gain 40
+# path2dets = Path(r"../records_human_detection/20260210_170053")  # Duration: 00:48 | FPS: 20.00 | dets: 1241
+# all platform with radome no calib rx gain 40
+# path2dets = Path(r"../records_human_detection/20260210_170435")  # Duration: 00:46 | FPS: 20.00 | dets: 1383
+# all platform with radome with calib number 1 rx gain 40 - target 30 deg in az
+# path2dets = Path(r"../records_human_detection/20260210_181556")  # Duration: 00:46 | FPS: 20.00 | dets: 1689
+# all platform with radome with no calib rx gain 40 - target 30 deg in az
+# path2dets = Path(r"../records_human_detection/20260210_181919")  # Duration: 00:51 | FPS: 20.00 | dets: 2005
+
+# path2dets = Path(r"../records_human_detection/20260219_160846")  # Duration: 00:47 | FPS: 20.00 | dets: 2266
+# path2dets = Path(r"../records_human_detection/20260219_161122")  # Duration: 00:53 | FPS: 20.00 | dets: 3095
+# path2dets = Path(r"../records_human_detection/20260219_161521")  # Duration: 02:20 | FPS: 20.00 | dets: 3832
+# path2dets = Path(r"../records_human_detection/20260219_162238")  # Duration: 01:09 | FPS: 20.00 | dets: 3607
+# path2dets = Path(r"../records_human_detection/20260219_162542")  # Duration: 01:17 | FPS: 20.00 | dets: 7919
+# path2dets = Path(r"../records_human_detection/20260219_163403")  # Duration: 01:32 | FPS: 20.00 | dets: 8710
+# path2dets = Path(r"../records_human_detection/20260219_164023")  # Duration: 01:15 | FPS: 20.00 | dets: 8355
+
+
+# original config
+# path2dets = Path(r"../records_human_detection/20260303_150320")  # Duration: 00:04 | FPS: 20.00 | dets: 176
+# test config - 12.5 slope - 6522 sample rate
 
 if "path2dets" not in globals():
     path2dets = get_latest_entry(Path(r"../records_human_detection"))
