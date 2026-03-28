@@ -570,6 +570,7 @@ def main_3D():
                 else:
 
                     if frame_number:
+                        print('frame num - ', frame_number)
                         if len(tracker.tracks)>0:
                             tracks = tracker.update(detections, i_rdr, frame_number*frame_period)
                             if not record_only_mode:
