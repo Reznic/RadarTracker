@@ -251,7 +251,8 @@ def stop_radar(ser_config):
     for i_rdr in range(len(ser_config)):
         ser_config[i_rdr].write(('sensorStop'+ '\n').encode())
     time.sleep(0.03)
-
+    for i_rdr in range(len(ser_config)):
+        ser_config[i_rdr].write(('flushCfg'+ '\n').encode())
 def start_radar(ser_config):
     """
     Start all Radars
