@@ -205,3 +205,13 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+
+records_human_detection/*
+playback/figures/*
+playback/playback_tracks/*
+.idea
+profile_humans (itay).cfg
+records_radome_chambar/*
+8_rdr_records/*
+records_radom_calib/*
