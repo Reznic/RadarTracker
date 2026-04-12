@@ -11,6 +11,7 @@ from pathlib import Path
 import sys
 import cv2
 import shutil
+import math
 
 print("current dir: ", os.getcwd())
 
@@ -309,7 +310,8 @@ def parse_detections(tlv1_payload, tlv7_payload, num_points, frame_num, frame_pe
         except:
             snr = -1
         range_val = np.sqrt(x**2+y**2+z**2)
-        if abs(doppler) < doppler_threshold or range_val<range_threshold:
+        if (#abs(doppler) < doppler_threshold or
+                range_val<range_threshold):
             continue  # Skip static detections
 
         detections.append({
@@ -580,7 +582,8 @@ def main_3D():
                     cur_proc_time = end-start
                     if cur_proc_time > max_proc_time:
                         max_proc_time = cur_proc_time
-                    print(f"Runtime: {cur_proc_time:.4f} seconds | {len(detections)} dets | radar_id: {i_rdr}")
+                    num_tracks = [len(t_list) for t_list in tracker.tracks]
+                    print(f"Runtime: {cur_proc_time:.4f} seconds | {len(detections)} dets | {num_tracks} trks | radar_id: {i_rdr}")
                 else:
 
                     if frame_number:
