@@ -59,6 +59,7 @@ class ExtendedKalmanTrack_3D:
         self.target_class = 'n'  # None
         self.t2a = 0 # time to arrive
         self.reported = False
+        self._needs_reclassify = False
         self.last_assoc = {
             'timestamp': detection['timestamp'],
             'x': detection['x'],
@@ -206,6 +207,7 @@ class ExtendedKalmanTrack_3D:
         # print('=== id=', self.id, '  integrated_dist = ', self.integrated_distant, ' track_dist = ', self.track_distance)
         self.last_assoc_timestamp = detection['timestamp']
         self.assoc_dets += 1
+        self._needs_reclassify = True
         self.was_associated = True
         self.time_no_assoc = 0
         self.missed = 0
@@ -236,6 +238,9 @@ class ExtendedKalmanTrack_3D:
         return self.z_M2 / (self.z_count - 1)
 
     def classify_tgt(self, thr_num_assoc4class_human, n_min_assoc_dets):
+        if not self._needs_reclassify:
+            return
+        self._needs_reclassify = False
         if self.target_class == 'n':
             if self.is_human_track(thr_num_assoc4class_human, n_min_assoc_dets):
                 self.target_class = 'h' # human track
@@ -462,6 +467,7 @@ class TrackerManager_3D:
         # Step 3: Compute distance matrix
         track_positions = [t.get_position()[0:3] for t in self.tracks[i_rdr]]
         track_la_dopplers = [[t.get_la_doppler()] for t in self.tracks[i_rdr]]
+        track_avg_dopplers = [t.get_avg_doppler() for t in self.tracks[i_rdr]]
         det_positions = [(d['x'], d['y'], d['z']) for d in detections]
         det_dopplers = [[d['doppler']] for d in detections]
 
@@ -515,7 +521,7 @@ class TrackerManager_3D:
                 # if self.tracks[i_rdr][i].assoc_dets > 10:
                 #     manuaver_dopp_thr = 7
                 range_innov = rng - self.tracks[i_rdr][i].range_val
-                predicted_range_innov = dt*self.tracks[i_rdr][i].get_avg_doppler()
+                predicted_range_innov = dt*track_avg_dopplers[i]
                 dist_thr = self.dist_threshold
 
                 if (abs(range_innov) < dist_thr and
@@ -594,9 +600,7 @@ class TrackerManager_3D:
     def filter_tracks(self, i_rdr):
         filtered_tracks = []
         for t in self.tracks[i_rdr]:
-            x, y, z = t.get_position()
-            range_val = np.sqrt(x ** 2 + y ** 2 + z ** 2)
-            vx, vy, vz= t.kf.x[3], t.kf.x[4], t.kf.x[5]
+            range_val = t.range_val
             # speed = np.sqrt(vx ** 2 + vy ** 2 + vz ** 2)
             if t.missed > self.max_missed:
                 continue
@@ -604,6 +608,7 @@ class TrackerManager_3D:
                 continue
             if range_val > self.max_range:
                 continue
+            x, y, z = t.get_position()
             if y < -10:
                 continue
             integrated_dist_cond = abs(t.integrated_distant - t.track_distance) > self.max_integrated_dist_diff
@@ -616,9 +621,11 @@ class TrackerManager_3D:
 
             # if np.abs(t.get_avg_doppler()) < 0.1:
             #     continue
-            doppler = (vx * x + vy * y + vz * z) / range_val
-            if t.target_class == 'n' and not t.was_associated and abs((range_val - t.last_range) - doppler * t.time_no_assoc) > 10:
-                continue
+            if range_val > 1e-6:
+                vx, vy, vz= t.kf.x[3], t.kf.x[4], t.kf.x[5]
+                doppler = (vx * x + vy * y + vz * z) / range_val
+                if t.target_class == 'n' and not t.was_associated and abs((range_val - t.last_range) - doppler * t.time_no_assoc) > 10:
+                    continue
 
             filtered_tracks.append(t)
         return filtered_tracks
