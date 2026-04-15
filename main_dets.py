@@ -202,7 +202,7 @@ def send_config(config_file, ser_config, timeout=1):
             if line.startswith('frameCfg'):
                 frame_period = float(line.split()[5])
             elif line.startswith('subFrameCfg'):
-                frame_period = float(line.split()[5])
+                frame_period = float(line.split()[6])
 
             if line.startswith('profileCfg'):
                 tx_phase_shifter = int(line.split()[7])
@@ -402,17 +402,18 @@ def read_frame(ser_data, frame_period, i_rdr, num_steer_angles):
             tlv1000_payload = tlv_data
     DATA_BUFFER[i_rdr] = DATA_BUFFER[i_rdr][offset:]
 
+    sub_frame_counter = (header['frame_number']-1)*num_steer_angles + header['sub_frame_number'] + 1
+
     if tlv1_payload and tlv7_payload:
-        detections = parse_detections(tlv1_payload, tlv7_payload, header['num_detected_obj'],header['frame_number'], frame_period, i_rdr)
+        detections = parse_detections(tlv1_payload, tlv7_payload, header['num_detected_obj'],sub_frame_counter, frame_period, i_rdr)
     if tlv1_payload and not tlv7_payload:
         detections = parse_detections(tlv1_payload, None, header['num_detected_obj'],
-                                      header['frame_number'],frame_period)
+                                      sub_frame_counter,frame_period)
     if tlv1000_payload and tlv7_payload:
-        detections = parse_detections1000(tlv1000_payload, tlv7_payload, header['num_detected_obj'],header['frame_number'], frame_period, i_rdr)
+        detections = parse_detections1000(tlv1000_payload, tlv7_payload, header['num_detected_obj'],sub_frame_counter, frame_period, i_rdr)
     if len(DATA_BUFFER[i_rdr]) > MAX_DATA_BUFFER:
         print('##########buffer_deleted!!!########')
         DATA_BUFFER[i_rdr] = b''
-    sub_frame_counter = (header['frame_number']-1)*num_steer_angles + header['sub_frame_number'] + 1
     return detections , sub_frame_counter
 
 # ---------------------- plot tracks ----------------------

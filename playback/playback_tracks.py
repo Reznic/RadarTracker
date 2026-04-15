@@ -56,7 +56,7 @@ def get_fps(folder_path):
             if line.startswith('frameCfg'):
                 frame_period = float(line.split()[5])
             elif line.startswith('subFrameCfg'):
-                frame_period = float(line.split()[5])
+                frame_period = float(line.split()[6])
             time.sleep(0.01)
     return 1/(frame_period/1000)
 
@@ -532,7 +532,7 @@ def run_tracker_3D_on_csv(csv_path, frame_period = 0.1, dist_threshold=1, min_tr
             axD.set_ylabel("Doppler (m/s)")
             axD.set_xlabel("Time (s)")
             axD.grid(True)
-            axD.set_ylim(-10, 0)
+            axD.set_ylim(-10, 10)
 
         # Global title and layout
         exp_name = extract_experiment_name(csv_path)
