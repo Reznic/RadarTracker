@@ -2,6 +2,7 @@ import serial
 import time
 import struct
 import math
+import collections
 import numpy as np
 import matplotlib.pyplot as plt
 from tracker import *
@@ -35,7 +36,7 @@ if record_results:
     # tracks_writer = csv.writer(tracks_file)
 
     # Write headers
-    detections_writer.writerow(["curr_timestamp","timestamp", "Radar id", "Frame number", "x", "y", "z", "doppler", "snr","noise", "range"])
+    detections_writer.writerow(["curr_timestamp","timestamp", "Radar id", "Frame number", "x", "y", "z", "doppler", "snr","noise", "range", "max_dets_reached", "max_dets_ratio"])
     detections_file.flush()
     # detections_writer.writerow(["timestamp", "range", "azimuth", "elevation", "doppler"])
 
@@ -139,6 +140,7 @@ show_only_classified = True
 # show_only_classified = False
 
 thr_num_assoc4class_car = 4
+MAX_DETS_WINDOW_SIZE = 20  # N for the m/N sliding window indicator
 
 
 dist_from_road = 15 # meters
@@ -290,7 +292,7 @@ def parse_frame_header(byte_data):
     }
 
 # ---------------------- TLV Parsing ----------------------
-def parse_detections(tlv1_payload, tlv7_payload, num_points, frame_num, frame_period, radar_id, doppler_threshold=0.1 , range_threshold=0.1):
+def parse_detections(tlv1_payload, tlv7_payload, num_points, frame_num, frame_period, radar_id, max_dets_reached=0, doppler_threshold=0.1, range_threshold=0.1):
     detections = []
     current_time = timestamp_now = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
     for i in range(num_points):
@@ -306,6 +308,7 @@ def parse_detections(tlv1_payload, tlv7_payload, num_points, frame_num, frame_pe
             snr, noise = struct.unpack('<HH', tlv7_payload[s_offset:s_offset+4])
         except:
             snr = -1
+            noise = -1
         range_val = np.sqrt(x**2+y**2+z**2)
         if (#abs(doppler) < doppler_threshold or
                 range_val<range_threshold):
@@ -322,11 +325,12 @@ def parse_detections(tlv1_payload, tlv7_payload, num_points, frame_num, frame_pe
             'range': range_val,
             'doppler': doppler,
             'snr': snr,
-            'noise': noise
+            'noise': noise,
+            'max_dets_reached': max_dets_reached
         })
     return detections
 
-def parse_detections1000(tlv1000_payload, tlv7_payload, num_points, frame_num, frame_period, radar_id, doppler_threshold=0.1 , range_threshold=0.1):
+def parse_detections1000(tlv1000_payload, tlv7_payload, num_points, frame_num, frame_period, radar_id, max_dets_reached=0, doppler_threshold=0.1, range_threshold=0.1):
     detections = []
     current_time = timestamp_now = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
     for i in range(num_points):
@@ -356,7 +360,8 @@ def parse_detections1000(tlv1000_payload, tlv7_payload, num_points, frame_num, f
             'range': range_val,
             'doppler': doppler,
             'snr': snr,
-            'noise': noise
+            'noise': noise,
+            'max_dets_reached': max_dets_reached
         })
     return detections
 
@@ -370,19 +375,20 @@ def read_frame(ser_data, frame_period, i_rdr, num_steer_angles):
     magic_idx = DATA_BUFFER[i_rdr].find(MAGIC_WORD)
 
     if magic_idx == -1 or len(DATA_BUFFER[i_rdr]) < magic_idx + 40:
-        return None , None
+        return None, None, 0
     # print('found magic ^^^^^^^^^^^^^')
     header = parse_frame_header(DATA_BUFFER[i_rdr][magic_idx:])
     # print(f'packet len: {header["total_packet_len"]} frame num: {header["frame_number"]} sub frame: {header["sub_frame_number"]}')
     offset = magic_idx + header['header_length']
     if magic_idx + header['total_packet_len'] > len(DATA_BUFFER[i_rdr]):
-        return None , None
+        return None, None, 0
     detections = []
     point_cloud_detections = []
     tlv1_payload = None
     tlv7_payload = None
     tlv1000_payload = None
 
+    tlv_stats_payload = None
     for _ in range(header['num_tlvs']):
         if offset + 8 > len(DATA_BUFFER[i_rdr]):
             break
@@ -397,21 +403,26 @@ def read_frame(ser_data, frame_period, i_rdr, num_steer_angles):
             tlv7_payload = tlv_data
         elif tlv_type == 1000:
             tlv1000_payload = tlv_data
+        elif tlv_type == 6:
+            tlv_stats_payload = tlv_data
+            print(f'stats TLV length: {len(tlv_data)}')
     DATA_BUFFER[i_rdr] = DATA_BUFFER[i_rdr][offset:]
 
     sub_frame_counter = (header['frame_number']-1)*num_steer_angles + header['sub_frame_number'] + 1
+    max_dets_reach = struct.unpack_from('<I', tlv_stats_payload, 24)[0] if tlv_stats_payload else 0
 
     if tlv1_payload and tlv7_payload:
-        detections = parse_detections(tlv1_payload, tlv7_payload, header['num_detected_obj'],sub_frame_counter, frame_period, i_rdr)
+        detections = parse_detections(tlv1_payload, tlv7_payload, header['num_detected_obj'], sub_frame_counter, frame_period, i_rdr, max_dets_reach)
     if tlv1_payload and not tlv7_payload:
         detections = parse_detections(tlv1_payload, None, header['num_detected_obj'],
-                                      sub_frame_counter,frame_period)
+                                      sub_frame_counter, frame_period, i_rdr, max_dets_reach)
     if tlv1000_payload and tlv7_payload:
-        detections = parse_detections1000(tlv1000_payload, tlv7_payload, header['num_detected_obj'],sub_frame_counter, frame_period, i_rdr)
+        detections = parse_detections1000(tlv1000_payload, tlv7_payload, header['num_detected_obj'], sub_frame_counter, frame_period, i_rdr, max_dets_reach)
     if len(DATA_BUFFER[i_rdr]) > MAX_DATA_BUFFER:
         print('##########buffer_deleted!!!########')
         DATA_BUFFER[i_rdr] = b''
-    return detections , sub_frame_counter
+
+    return detections, sub_frame_counter, max_dets_reach
 
 # ---------------------- plot tracks ----------------------
 
@@ -509,6 +520,7 @@ def main_3D():
     if not record_only_mode:
         plt.ion()
     tracker = TrackerManager_3D(num_rdrs=nub_rdrs)
+    max_dets_windows = [collections.deque(maxlen=MAX_DETS_WINDOW_SIZE) for _ in range(nub_rdrs)]
     ## video capture
     ret, frame = camera.read()
     if ret:
@@ -550,7 +562,15 @@ def main_3D():
                     cv2.imwrite(f"{os.path.join(camera_frames_folder_path, timestamp_now)}.jpg", frame)
             ####### end video capture
             for i_rdr in range(len(ser_data)):
-                detections, frame_number = read_frame(ser_data[i_rdr], frame_period, i_rdr, num_steer_angles)
+                detections, frame_number, max_dets_reached = read_frame(ser_data[i_rdr], frame_period, i_rdr, num_steer_angles)
+
+                if frame_number:
+                    max_dets_windows[i_rdr].append(1 if max_dets_reached else 0)
+                window = max_dets_windows[i_rdr]
+                m_dets = sum(window)
+                n_dets = len(window)
+                max_dets_ratio = m_dets / n_dets if n_dets > 0 else 0.0
+
                 if detections:
                     tracks = tracker.update(detections, i_rdr, frame_number*frame_period)
                     if not record_only_mode:
@@ -571,7 +591,9 @@ def main_3D():
                                                              round(d['doppler'],3),
                                                              d['snr'],
                                                              d['noise'],
-                                                             round(d['range'],3)
+                                                             round(d['range'],3),
+                                                             d['max_dets_reached'],
+                                                             round(max_dets_ratio, 3)
                                 ])
                         else:
                             print(d)
@@ -581,7 +603,11 @@ def main_3D():
                     if cur_proc_time > max_proc_time:
                         max_proc_time = cur_proc_time
                     num_tracks = [len(t_list) for t_list in tracker.tracks]
-                    print(f"Runtime: {cur_proc_time:.4f} seconds | {len(detections)} dets | {num_tracks} trks | radar_id: {i_rdr}")
+                    print_line = f"Runtime: {cur_proc_time:.4f} seconds | {len(detections)} dets | {num_tracks} trks | radar_id: {i_rdr} | max_dets: {m_dets}/{n_dets}"
+                    if max_dets_reached:
+                        print_line = print_line + ' ### MAX DETS REACHED ###'
+                    print(print_line)
+
                 else:
 
                     if frame_number:
