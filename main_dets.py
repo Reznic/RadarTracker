@@ -1,6 +1,7 @@
 import serial
 import time
 import struct
+import math
 import numpy as np
 import matplotlib.pyplot as plt
 from tracker import *
@@ -11,7 +12,6 @@ from pathlib import Path
 import sys
 import cv2
 import shutil
-import math
 
 print("current dir: ", os.getcwd())
 
@@ -238,13 +238,10 @@ def decode_steering_angle(tx_phase_shifter):
 
     # 4. Calculate the steering angle
     # Formula: theta = arcsin(delta_phi / 360)
-    try:
-        steering_angle_rad = math.asin(delta_phi / 360.0)
-        steering_angle_deg = math.degrees(steering_angle_rad)
-    except ValueError:
-        return None, "Invalid phase difference for arcsin"
+    steering_angle_rad = math.asin(delta_phi / 360.0)
+    steering_angle_deg = math.degrees(steering_angle_rad)
 
-    return round(steering_angle_deg, 2) #, (tx0_phase, tx1_phase, tx2_phase)
+    return round(steering_angle_deg, 2)
 
 def connect_serial():
     ser_config = []
