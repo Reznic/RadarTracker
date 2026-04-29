@@ -3,6 +3,7 @@ import time
 import struct
 import math
 import collections
+import random
 import numpy as np
 import matplotlib.pyplot as plt
 from tracker import *
@@ -141,11 +142,12 @@ show_only_classified = True
 
 thr_num_assoc4class_car = 4
 MAX_DETS_WINDOW_SIZE = 20  # N for the m/N sliding window indicator
+idle_time_hopping_thr = 0.4  # trigger idle-time hop when max_dets_ratio exceeds this
 
 
 dist_from_road = 15 # meters
 # ---------------------- Serial Setup ----------------------
-def send_config(config_file, ser_config, timeout=1):
+def send_config(config_file, ser_config, timeout=1, idle_time_offset=0):
     freqs = []
     steer_angles = []
     frame_period = None
@@ -156,6 +158,9 @@ def send_config(config_file, ser_config, timeout=1):
             if line.startswith('profileCfg'):
                 # calc bandwidth and change the start freq of every radar to be different
                 line_parts = line.split()
+                if idle_time_offset != 0:
+                    line_parts[3] = str(int(float(line_parts[3])) + idle_time_offset)
+                    line = ' '.join(line_parts)
                 slope = float(line_parts[8])
                 ramp_end_time = float(line_parts[5])
                 bandwidth = int(np.ceil(slope * ramp_end_time + 100))
@@ -273,6 +278,15 @@ def start_radar(ser_config):
     for i_rdr in range(len(ser_config)):
         ser_config[i_rdr].write(('sensorStart' + '\n').encode())
     time.sleep(0.03)
+
+def hop_idle_time(ser_config):
+    increment = random.choice([-4, -2, 0, 2, 4])
+    print(f"[HOP] Idle time increment: {increment} us")
+    stop_radar(ser_config)
+    frame_period, freqs, steer_angles = send_config(CFG_FILE, ser_config, idle_time_offset=increment)
+    start_radar(ser_config)
+    return frame_period, freqs, steer_angles
+
 # ---------------------- Header Parsing ----------------------
 def parse_frame_header(byte_data):
     header_format = 'Q8I'
@@ -570,6 +584,10 @@ def main_3D():
                 m_dets = sum(window)
                 n_dets = len(window)
                 max_dets_ratio = m_dets / n_dets if n_dets > 0 else 0.0
+
+                if n_dets == MAX_DETS_WINDOW_SIZE and max_dets_ratio > idle_time_hopping_thr:
+                    frame_period, freqs, steer_angles = hop_idle_time(ser_config)
+                    max_dets_windows = [collections.deque(maxlen=MAX_DETS_WINDOW_SIZE) for _ in range(nub_rdrs)]
 
                 if detections:
                     tracks = tracker.update(detections, i_rdr, frame_number*frame_period)
