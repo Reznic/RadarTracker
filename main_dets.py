@@ -39,6 +39,10 @@ if record_results:
     # Write headers
     detections_writer.writerow(["curr_timestamp","timestamp", "Radar id", "Frame number", "x", "y", "z", "doppler", "snr","noise", "range", "max_dets_reached", "max_dets_ratio"])
     detections_file.flush()
+
+    noise_profile_file = open(os.path.join(path2records_folder, "noise_profile.csv"), mode='w', newline='')
+    noise_profile_writer = csv.writer(noise_profile_file)
+    noise_profile_header_written = False
     # detections_writer.writerow(["timestamp", "range", "azimuth", "elevation", "doppler"])
 
     # tracks_writer.writerow(["timestamp", "id", "x", "y", "vx", "vy"])
@@ -389,19 +393,19 @@ def read_frame(ser_data, frame_period, i_rdr, num_steer_angles):
     magic_idx = DATA_BUFFER[i_rdr].find(MAGIC_WORD)
 
     if magic_idx == -1 or len(DATA_BUFFER[i_rdr]) < magic_idx + 40:
-        return None, None, 0
+        return None, None, 0, None
     # print('found magic ^^^^^^^^^^^^^')
     header = parse_frame_header(DATA_BUFFER[i_rdr][magic_idx:])
     # print(f'packet len: {header["total_packet_len"]} frame num: {header["frame_number"]} sub frame: {header["sub_frame_number"]}')
     offset = magic_idx + header['header_length']
     if magic_idx + header['total_packet_len'] > len(DATA_BUFFER[i_rdr]):
-        return None, None, 0
+        return None, None, 0, None
     detections = []
     point_cloud_detections = []
     tlv1_payload = None
     tlv7_payload = None
     tlv1000_payload = None
-
+    tlv3_payload = None
     tlv_stats_payload = None
     for _ in range(header['num_tlvs']):
         if offset + 8 > len(DATA_BUFFER[i_rdr]):
@@ -417,6 +421,8 @@ def read_frame(ser_data, frame_period, i_rdr, num_steer_angles):
             tlv7_payload = tlv_data
         elif tlv_type == 1000:
             tlv1000_payload = tlv_data
+        elif tlv_type == 3:
+            tlv3_payload = tlv_data
         elif tlv_type == 6:
             tlv_stats_payload = tlv_data
             print(f'stats TLV length: {len(tlv_data)}')
@@ -436,7 +442,7 @@ def read_frame(ser_data, frame_period, i_rdr, num_steer_angles):
         print('##########buffer_deleted!!!########')
         DATA_BUFFER[i_rdr] = b''
 
-    return detections, sub_frame_counter, max_dets_reach
+    return detections, sub_frame_counter, max_dets_reach, tlv3_payload
 
 # ---------------------- plot tracks ----------------------
 
@@ -517,6 +523,7 @@ def save_freqs_to_file(freqs, filename="freqs.txt"):
 
 # ---------------------- Main 3D----------------------
 def main_3D():
+    global noise_profile_header_written
     last_vid_frame_time = time.time()
     print("Connecting to radar...")
     ser_config, ser_data = connect_serial()
@@ -576,7 +583,7 @@ def main_3D():
                     cv2.imwrite(f"{os.path.join(camera_frames_folder_path, timestamp_now)}.jpg", frame)
             ####### end video capture
             for i_rdr in range(len(ser_data)):
-                detections, frame_number, max_dets_reached = read_frame(ser_data[i_rdr], frame_period, i_rdr, num_steer_angles)
+                detections, frame_number, max_dets_reached, noise_profile_payload = read_frame(ser_data[i_rdr], frame_period, i_rdr, num_steer_angles)
 
                 if frame_number:
                     max_dets_windows[i_rdr].append(1 if max_dets_reached else 0)
@@ -634,6 +641,23 @@ def main_3D():
                             tracks = tracker.update(detections, i_rdr, frame_number*frame_period)
                             if not record_only_mode:
                                 plot_tracks_xy(tracks, min_assoc2show=5)
+
+                if record_results and noise_profile_payload and frame_number:
+                    curr_ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+                    raw_vals = struct.unpack_from(f'<{len(noise_profile_payload)//2}H', noise_profile_payload)
+                    noise_vals_db = [round(10 * np.log10(v), 2) for v in raw_vals]
+                    if not noise_profile_header_written:
+                        noise_profile_writer.writerow(
+                            ["curr_timestamp", "timestamp", "Radar id", "Frame number", "noise_median_dB"] +
+                            [f"noise_{k}_dB" for k in range(len(noise_vals_db))]
+                        )
+                        noise_profile_header_written = True
+                    noise_median = round(float(np.median(noise_vals_db)), 2)
+                    noise_profile_writer.writerow(
+                        [curr_ts, round(frame_number * frame_period, 6), i_rdr, frame_number, noise_median] + noise_vals_db
+                    )
+                    noise_profile_file.flush()
+
             time.sleep(0.005)
 
     except KeyboardInterrupt:
@@ -650,6 +674,7 @@ def main_3D():
             ser_config[i_rdr].close()
             ser_data[i_rdr].close()
         detections_file.close()
+        noise_profile_file.close()
 
         camera.release()
         cv2.destroyAllWindows()
