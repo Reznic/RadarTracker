@@ -197,7 +197,7 @@ class ExtendedKalmanTrack_3D:
         self.az_history.append(az)
         self.median_az = self.get_median_az()
 
-        if all(self.dopp_thr4class_human > num for num in self.doppler_history):
+        if all(self.dopp_thr4class_human > abs(num) for num in self.doppler_history):
             self.count_pass_dopp4human = 0
         self.last_doppler = detection['doppler']
         self.last_range = detection['range']
@@ -274,7 +274,7 @@ class ExtendedKalmanTrack_3D:
     def is_human_track(self, thr_num_assoc4class_human,n_min_assoc_dets):
         is_human = False
         if self.target_class == 'n':
-            passed_min_range = self.first_range - self.last_range > self.passed_min_range_threshold
+            passed_min_range = abs(self.first_range - self.last_range) > self.passed_min_range_threshold
             # print('ID=', self.id ,'  birth_time' ,round(self.birth_time, 2), '  first_range = ', self.first_range  ,'   last_range = ' , self.last_range)
             if self.assoc_dets > n_min_assoc_dets and passed_min_range:
                 is_human = self.count_pass_dopp4human < thr_num_assoc4class_human
@@ -611,11 +611,11 @@ class TrackerManager_3D:
             x, y, z = t.get_position()
             if y < -10:
                 continue
-            integrated_dist_cond = abs(t.integrated_distant - t.track_distance) > self.max_integrated_dist_diff
-            if integrated_dist_cond and t.integrated_distant < self.passed_min_range_threshold:
+            integrated_dist_cond = abs(abs(t.integrated_distant) - abs(t.track_distance)) > self.max_integrated_dist_diff
+            if integrated_dist_cond and abs(t.integrated_distant) < self.passed_min_range_threshold:
                 continue
 
-            is_static = t.first_range - t.last_range < self.passed_min_range_threshold
+            is_static = abs(t.first_range - t.last_range) < self.passed_min_range_threshold
             if t.age > self.max_time_static and is_static:
                 continue
 
